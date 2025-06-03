@@ -95,13 +95,17 @@ const getFontSize = (size) => {
     return `${size * 0.15}px`;
 };
 
+const NTOPNG_HOST = "192.168.1.148";
+const NTOPNG_PORT = "3000";
+const IFID = "1";
+
 const BubbleStats = () => {
     const [stats, setStats] = useState([]);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const response = await fetch('http://localhost:3000/api/dashboard-stats');
+                const response = await fetch(`http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/l7/stats.lua?ifid=${IFID}&host=192.168.1.143`);
                 const data = await response.json();
 
                 // Transform the data into the format your component expects
