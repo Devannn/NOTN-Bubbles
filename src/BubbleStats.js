@@ -62,6 +62,11 @@ const UserCount = styled.div`
   font-size: 0.8em;
 `;
 
+const HostIP = styled.div`
+  font-size: 0.7em;
+  margin-top: 5px;
+`;
+
 // Add this color mapping object at the top of your file, outside the component
 const appColors = {
     'WhatsApp': '#25D366',
@@ -101,32 +106,123 @@ const IFID = "1";
 
 const BubbleStats = () => {
     const [stats, setStats] = useState([]);
+    const [activeHosts, setActiveHosts] = useState([]);
+
+    // Function to fetch active hosts
+    const fetchActiveHosts = async () => {
+        try {
+            const credentials = btoa('admin:nN38vvDU');
+            const response = await fetch(
+                `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/active.lua?ifid=${IFID}`,
+                {
+                    headers: {
+                        'Authorization': `Basic ${credentials}`,
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Active hosts response:', data);
+
+            if (data && data.rsp && data.rsp.data) {
+                const hosts = data.rsp.data.map(host => host.ip);
+                setActiveHosts(hosts);
+                return hosts;
+            }
+            return [];
+        } catch (error) {
+            console.error('Error fetching active hosts:', error);
+            return [];
+        }
+    };
+
+    // Function to fetch L7 stats for a specific host
+    const fetchHostStats = async (hostIP) => {
+        try {
+            const credentials = btoa('admin:nN38vvDU');
+            const response = await fetch(
+                `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/l7/stats.lua?ifid=${IFID}&host=${hostIP}`,
+                {
+                    headers: {
+                        'Authorization': `Basic ${credentials}`,
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`L7 stats for ${hostIP}:`, data);
+
+            if (!data || typeof data !== 'object') {
+                return null;
+            }
+
+            // Transform the data for this host
+            return Object.entries(data)
+                .filter(([_, packets]) => typeof packets === 'number' && packets > 0)
+                .map(([name, packets]) => ({
+                    id: `${hostIP}-${name}`,
+                    name: name,
+                    packets: Math.floor(packets),
+                    color: appColors[name] || appColors['Default'],
+                    hostIP: hostIP
+                }));
+        } catch (error) {
+            console.error(`Error fetching stats for host ${hostIP}:`, error);
+            return null;
+        }
+    };
 
     useEffect(() => {
-        const fetchStats = async () => {
+        const fetchAllStats = async () => {
             try {
-                const response = await fetch(`http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/l7/stats.lua?ifid=${IFID}&host=192.168.1.143`);
-                const data = await response.json();
+                // First, get active hosts
+                const hosts = await fetchActiveHosts();
+                console.log('Active hosts:', hosts); // Debug log
 
-                // Transform the data into the format your component expects
-                const transformedStats = Object.entries(data).map(([name, packets], index) => ({
-                    id: index + 1,
-                    name: name,
-                    packets: packets,
-                    color: appColors[name] || appColors['Default'] // Use default color if no specific color is defined
-                }));
+                if (hosts.length === 0) {
+                    console.log('No active hosts found');
+                    return;
+                }
 
-                setStats(transformedStats);
+                // Then, fetch stats for each host
+                const allStatsPromises = hosts.map(hostIP => fetchHostStats(hostIP));
+                const allStatsResults = await Promise.all(allStatsPromises);
+
+                // Combine all stats, filtering out null results
+                const combinedStats = allStatsResults
+                    .filter(stats => stats !== null)
+                    .flat();
+
+                console.log('Combined stats:', combinedStats);
+
+                if (combinedStats.length > 0) {
+                    setStats(combinedStats);
+                } else {
+                    console.log('No valid stats data to display');
+                }
             } catch (error) {
-                console.error('Error fetching stats:', error);
+                console.error('Error in fetchAllStats:', error);
+                if (stats.length === 0) {
+                    setStats([]);
+                }
             }
         };
 
         // Fetch immediately
-        fetchStats();
+        fetchAllStats();
 
         // Set up polling every 30 seconds
-        const interval = setInterval(fetchStats, 30000);
+        const interval = setInterval(fetchAllStats, 30000);
 
         // Cleanup interval on component unmount
         return () => clearInterval(interval);
@@ -303,6 +399,9 @@ const BubbleStats = () => {
                                     <UserCount style={{ fontSize: getFontSize(size) * 0.8 }}>
                                         {stat.packets} packets
                                     </UserCount>
+                                    <HostIP style={{ fontSize: getFontSize(size) * 0.6 }}>
+                                        {stat.hostIP}
+                                    </HostIP>
                                 </Bubble>
                             );
                         })}
@@ -311,7 +410,7 @@ const BubbleStats = () => {
             <SliderContainer>
                 {stats.map((stat) => (
                     <div key={stat.id}>
-                        <div>{stat.name}</div>
+                        <div>{stat.name} ({stat.hostIP})</div>
                         <Slider
                             type="range"
                             min="0"
