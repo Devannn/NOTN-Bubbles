@@ -1,0 +1,14 @@
+{
+    "apps": [
+        { "id": 1, "name": "WhatsApp", "users": 12, "color": "#25D366" },
+        { "id": 2, "name": "Facebook", "users": 25, "color": "#1877F2" },
+        { "id": 3, "name": "Instagram", "users": 8, "color": "#E4405F" },
+        { "id": 4, "name": "TikTok", "users": 35, "color": "#000000" },
+        { "id": 5, "name": "YouTube", "users": 12, "color": "#FF0000" },
+        { "id": 6, "name": "Twitter", "users": 11, "color": "#1DA1F2" },
+        { "id": 7, "name": "Snapchat", "users": 25, "color": "#FFFC00" },
+        { "id": 8, "name": "Pinterest", "users": 8, "color": "#E60023" },
+        { "id": 9, "name": "LinkedIn", "users": 35, "color": "#0A66C2" },
+        { "id": 10, "name": "Reddit", "users": 12, "color": "#FF4500" }
+    ]
+} 
