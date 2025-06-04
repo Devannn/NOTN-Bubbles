@@ -47,24 +47,34 @@ const Bubble = styled(motion.div)`
   align-items: center;
   background: ${props => props.color || '#4CAF50'};
   color: white;
-  padding: 0px;
+  padding: 10px;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+  }
 `;
 
 const AppName = styled.div`
   font-weight: bold;
   text-align: center;
   margin-bottom: 5px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
 `;
 
-const UserCount = styled.div`
-  font-size: 0.8em;
+const PacketCount = styled.div`
+  font-size: 0.9em;
+  font-weight: 500;
+  margin: 5px 0;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
 `;
 
 const HostIP = styled.div`
   font-size: 0.7em;
   margin-top: 5px;
+  opacity: 0.8;
 `;
 
 // Add this color mapping object at the top of your file, outside the component
@@ -112,8 +122,10 @@ const BubbleStats = () => {
     const fetchActiveHosts = async () => {
         try {
             const credentials = btoa('admin:nN38vvDU');
+            console.log('Fetching hosts from:', `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/custom_data.lua?ifid=${IFID}`);
+
             const response = await fetch(
-                `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/active.lua?ifid=${IFID}`,
+                `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/custom_data.lua?ifid=${IFID}`,
                 {
                     headers: {
                         'Authorization': `Basic ${credentials}`,
@@ -127,13 +139,19 @@ const BubbleStats = () => {
             }
 
             const data = await response.json();
-            console.log('Active hosts response:', data);
+            console.log('Raw API Response:', data);
 
+            // Filter for 192.168.1.x IPs
             if (data && data.rsp && data.rsp.data) {
-                const hosts = data.rsp.data.map(host => host.ip);
+                const hosts = data.rsp.data
+                    .filter(host => host.ip && host.ip.startsWith('192.168.1.'))
+                    .map(host => host.ip);
+
+                console.log('Filtered IPs:', hosts);
                 setActiveHosts(hosts);
                 return hosts;
             }
+            console.log('No valid data found in response');
             return [];
         } catch (error) {
             console.error('Error fetching active hosts:', error);
@@ -145,6 +163,8 @@ const BubbleStats = () => {
     const fetchHostStats = async (hostIP) => {
         try {
             const credentials = btoa('admin:nN38vvDU');
+            console.log('Fetching L7 stats for host:', hostIP);
+
             const response = await fetch(
                 `http://${NTOPNG_HOST}:${NTOPNG_PORT}/lua/rest/v2/get/host/l7/stats.lua?ifid=${IFID}&host=${hostIP}`,
                 {
@@ -163,19 +183,23 @@ const BubbleStats = () => {
             console.log(`L7 stats for ${hostIP}:`, data);
 
             if (!data || typeof data !== 'object') {
+                console.log(`No valid L7 data for ${hostIP}`);
                 return null;
             }
 
-            // Transform the data for this host
-            return Object.entries(data)
+            // Transform the L7 data for this host
+            const transformedData = Object.entries(data)
                 .filter(([_, packets]) => typeof packets === 'number' && packets > 0)
-                .map(([name, packets]) => ({
-                    id: `${hostIP}-${name}`,
-                    name: name,
+                .map(([appName, packets]) => ({
+                    id: `${hostIP}-${appName}`,
+                    name: appName,
                     packets: Math.floor(packets),
-                    color: appColors[name] || appColors['Default'],
+                    color: appColors[appName] || appColors['Default'],
                     hostIP: hostIP
                 }));
+
+            console.log(`Transformed data for ${hostIP}:`, transformedData);
+            return transformedData;
         } catch (error) {
             console.error(`Error fetching stats for host ${hostIP}:`, error);
             return null;
@@ -187,7 +211,7 @@ const BubbleStats = () => {
             try {
                 // First, get active hosts
                 const hosts = await fetchActiveHosts();
-                console.log('Active hosts:', hosts); // Debug log
+                console.log('Active hosts:', hosts);
 
                 if (hosts.length === 0) {
                     console.log('No active hosts found');
@@ -227,6 +251,11 @@ const BubbleStats = () => {
         // Cleanup interval on component unmount
         return () => clearInterval(interval);
     }, []);
+
+    // Add a debug log for the stats state
+    useEffect(() => {
+        console.log('Current stats state:', stats);
+    }, [stats]);
 
     const [positions, setPositions] = useState([]);
 
@@ -364,11 +393,11 @@ const BubbleStats = () => {
                         <AppName style={{ fontSize: getFontSize(getBubbleSize(stats.reduce((sum, stat) => sum + stat.packets, 0))) }}>
                             Total Packets
                         </AppName>
-                        <UserCount style={{ fontSize: getFontSize(getBubbleSize(stats.reduce((sum, stat) => sum + stat.packets, 0))) }}>
-                            {stats.reduce((sum, stat) => sum + stat.packets, 0)}
-                        </UserCount>
+                        <PacketCount style={{ fontSize: getFontSize(getBubbleSize(stats.reduce((sum, stat) => sum + stat.packets, 0))) }}>
+                            {stats.reduce((sum, stat) => sum + stat.packets, 0).toLocaleString()}
+                        </PacketCount>
                     </Bubble>
-                    {/* Other Bubbles */}
+                    {/* Application Bubbles */}
                     {stats
                         .filter(stat => stat.packets > 0)
                         .map((stat, index) => {
@@ -396,9 +425,9 @@ const BubbleStats = () => {
                                     <AppName style={{ fontSize: getFontSize(size) }}>
                                         {stat.name}
                                     </AppName>
-                                    <UserCount style={{ fontSize: getFontSize(size) * 0.8 }}>
-                                        {stat.packets} packets
-                                    </UserCount>
+                                    <PacketCount style={{ fontSize: getFontSize(size) * 0.8 }}>
+                                        {stat.packets.toLocaleString()} packets
+                                    </PacketCount>
                                     <HostIP style={{ fontSize: getFontSize(size) * 0.6 }}>
                                         {stat.hostIP}
                                     </HostIP>
